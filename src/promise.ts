@@ -1,28 +1,6 @@
-enum PromiseStatus {
-  pending,
-  fulfilled,
-  rejected,
-}
-interface Then<T> {
-  (resolve: onFulfilled<T>, reject: onRejected): void;
-}
-
-interface onFulfilled<T = unknown> {
-  (v: T): any;
-}
-interface onRejected {
-  (err: unknown): any;
-}
-
-//判断值是对象或函数,可能含有then
-function isObjectOrFN(v: unknown): v is { then?: (...p: any) => unknown } {
-  //null的类型也是唐渝鹏
-  if (v === null) {
-    return false;
-  }
-
-  return typeof v === "object" || typeof v === "function";
-}
+import { changeOtherTypeToFunction } from "./changeOtherTypeToFunction";
+import { isObjectOrFN } from "./isObjectOrFN";
+import { onFulfilled, onRejected, PromiseStatus, Then } from "./type";
 
 function resolvePromise(
   promise2: Promise,
@@ -120,11 +98,11 @@ class Promise<T = unknown> {
     //将其保存下来
     const self = this;
     const promiseHandle = {
-      [PromiseStatus.fulfilled]: this.changeToFunction(
+      [PromiseStatus.fulfilled]: changeOtherTypeToFunction(
         PromiseStatus.fulfilled,
         onFulfilled
       ),
-      [PromiseStatus.rejected]: this.changeToFunction(
+      [PromiseStatus.rejected]: changeOtherTypeToFunction(
         PromiseStatus.rejected,
         onRejected
       ),
@@ -179,26 +157,6 @@ class Promise<T = unknown> {
    * @param type
    * @param cb
    */
-  private changeToFunction<T extends unknown>(type: PromiseStatus, cb: T) {
-    if (typeof cb === "function") {
-      return cb;
-    }
-    switch (type) {
-      case PromiseStatus.fulfilled: {
-        return function (value: any) {
-          return value;
-        };
-      }
-      case PromiseStatus.rejected: {
-        return function (reason: unknown) {
-          throw reason;
-        };
-      }
-      case PromiseStatus.pending: {
-        throw new Error("不存在pending状态的处理函数");
-      }
-    }
-  }
 
   static reject(err: unknown) {
     return new Promise((resolve, reject) => {
@@ -212,24 +170,18 @@ class Promise<T = unknown> {
   }
 }
 
-const adapter = {
-  deferred: () => {
-    let resolve;
-    let reject;
-    const promise = new Promise((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-    return {
-      promise,
-      reject,
-      resolve,
-    };
-  },
-  //@ts-ignore
-  rejected: (reason) => Promise.reject(reason),
-  //@ts-ignore
-  resolved: (value) => Promise.resolve(value),
+export const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return {
+    promise,
+    reject,
+    resolve,
+  };
 };
-
-module.exports = adapter;
+export const rejected = Promise.reject;
+export const resolved = Promise.resolve;
