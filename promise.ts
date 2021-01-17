@@ -25,15 +25,24 @@ function resolvePromise(
     // reject报错
     return reject(new TypeError("Chaining cycle detected for promise"));
   }
-  // 防止多次调用
+  //这个标志位逻辑是适用于外部自定义对象有then函数,
+  //防止resolve与reject不能多次调用
   let called: boolean = false;
-  // x不是null 且x是对象或者函数
+  // x不是null且x是对象或者函数
+  // 类似于Promise有then函数的
   if (x != null && (typeof x === "object" || typeof x === "function")) {
+    let then;
     try {
-      // A+规定，声明then = x的then方法
-      let then = x.then;
-      // 如果then是函数，就默认是promise了
-      if (typeof then === "function") {
+      then = x.then;
+    } catch (e) {
+      // 获取then失败
+      if (called) return;
+      return reject(e);
+    }
+
+    // 如果then是函数，就默认是promise了
+    if (typeof then === "function") {
+      try {
         // 就让then执行 第一个参数是this   后面是成功的回调 和 失败的回调
         then.call(
           x,
@@ -51,15 +60,14 @@ function resolvePromise(
             reject(err); // 失败了就失败了
           }
         );
-      } else {
-        resolve(x); // 直接成功即可
+      } catch (e) {
+        if (called) return;
+        //then函数执行失败的捕获
+        reject(e);
       }
-    } catch (e) {
-      // 也属于失败
-      if (called) return;
-      called = true;
-      // 取then出错了那就不要在继续执行了
-      reject(e);
+    } else {
+      //then是一个值,直接返回就可以了
+      resolve(x);
     }
   } else {
     resolve(x);
@@ -122,6 +130,7 @@ class Promise<T = unknown> {
       function createHandle(type: PromiseStatus) {
         return function () {
           if (self.state === type) {
+            //将函数执行推到下一个时间循环中
             setTimeout(() => {
               try {
                 //如果处理函数状态为错误,返回错误Promise
@@ -153,6 +162,12 @@ class Promise<T = unknown> {
     return promise2;
   }
 
+  /**
+   * 如果是函数使用函数
+   * 其他值就透传数据
+   * @param type
+   * @param cb
+   */
   private changeToFunction<T extends unknown>(type: PromiseStatus, cb: T) {
     if (typeof cb === "function") {
       return cb;

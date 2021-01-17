@@ -10,15 +10,25 @@ function resolvePromise(promise2, x, resolve, reject) {
         // reject报错
         return reject(new TypeError("Chaining cycle detected for promise"));
     }
-    // 防止多次调用
+    //这个标志位逻辑是适用于外部自定义对象有then函数,
+    //防止resolve与reject不能多次调用
     var called = false;
-    // x不是null 且x是对象或者函数
+    // x不是null且x是对象或者函数
+    // 类似于Promise有then函数的
     if (x != null && (typeof x === "object" || typeof x === "function")) {
+        var then = void 0;
         try {
-            // A+规定，声明then = x的then方法
-            var then = x.then;
-            // 如果then是函数，就默认是promise了
-            if (typeof then === "function") {
+            then = x.then;
+        }
+        catch (e) {
+            // 获取then失败
+            if (called)
+                return;
+            return reject(e);
+        }
+        // 如果then是函数，就默认是promise了
+        if (typeof then === "function") {
+            try {
                 // 就让then执行 第一个参数是this   后面是成功的回调 和 失败的回调
                 then.call(x, function (y) {
                     // 成功和失败只能调用一个
@@ -35,17 +45,16 @@ function resolvePromise(promise2, x, resolve, reject) {
                     reject(err); // 失败了就失败了
                 });
             }
-            else {
-                resolve(x); // 直接成功即可
+            catch (e) {
+                if (called)
+                    return;
+                //then函数执行失败的捕获
+                reject(e);
             }
         }
-        catch (e) {
-            // 也属于失败
-            if (called)
-                return;
-            called = true;
-            // 取then出错了那就不要在继续执行了
-            reject(e);
+        else {
+            //then是一个值,直接返回就可以了
+            resolve(x);
         }
     }
     else {
@@ -102,6 +111,7 @@ var Promise = /** @class */ (function () {
             function createHandle(type) {
                 return function () {
                     if (self.state === type) {
+                        //将函数执行推到下一个时间循环中
                         setTimeout(function () {
                             try {
                                 //如果处理函数状态为错误,返回错误Promise
@@ -132,6 +142,12 @@ var Promise = /** @class */ (function () {
         });
         return promise2;
     };
+    /**
+     * 如果是函数使用函数
+     * 其他值就透传数据
+     * @param type
+     * @param cb
+     */
     Promise.prototype.changeToFunction = function (type, cb) {
         if (typeof cb === "function") {
             return cb;
