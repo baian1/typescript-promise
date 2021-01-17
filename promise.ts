@@ -76,14 +76,18 @@ class Promise<T = unknown> {
   constructor(executor: Then<T>) {
     this.state = PromiseStatus.pending;
     const resolve = (value: T) => {
-      this.state = PromiseStatus.fulfilled;
-      this.value = value;
-      this.onResolvedCallbacks.forEach((cb) => cb(value));
+      if (this.state === PromiseStatus.pending) {
+        this.state = PromiseStatus.fulfilled;
+        this.value = value;
+        this.onResolvedCallbacks.forEach((cb) => cb(value));
+      }
     };
     const reject = (reason: unknown) => {
-      this.state = PromiseStatus.rejected;
-      this.reason = reason;
-      this.onRejectedCallbacks.forEach((cb) => cb(reason));
+      if (this.state === PromiseStatus.pending) {
+        this.state = PromiseStatus.rejected;
+        this.reason = reason;
+        this.onRejectedCallbacks.forEach((cb) => cb(reason));
+      }
     };
     try {
       executor(resolve, reject);
@@ -91,49 +95,72 @@ class Promise<T = unknown> {
       reject(err);
     }
   }
-  then(
-    onFulfilled: onFulfilled<T> = (v) => v,
-    onRejected: onRejected = (err) => {
-      //err要被后面的catch接住,所以用throw
-      //return就变成then了
-      throw err;
-    }
-  ) {
+
+  then(onFulfilled?: onFulfilled<T>, onRejected?: onRejected) {
+    const {
+      onFulfilled: newOnFulfilled,
+      onRejected: newOnRejected,
+    } = this.changeToFunction(onFulfilled, onRejected);
+
     // 状态为fulfilled，执行onFulfilled，传入成功的值
     let promise2 = new Promise((resolve, reject) => {
-      if (this.state === PromiseStatus.fulfilled) {
-        let x = onFulfilled(this.value);
-        resolvePromise(promise2, x, resolve, reject);
-      }
-      // 状态为rejected，执行onRejected，传入失败的原因
-      if (this.state === PromiseStatus.rejected) {
-        let x = onRejected(this.reason);
-        resolvePromise(promise2, x, resolve, reject);
-      }
-
-      if (this.state === PromiseStatus.pending) {
-        this.onResolvedCallbacks.push((v) => {
-          setTimeout(() => {
-            let x = onFulfilled(v);
-            resolvePromise(promise2, x, resolve, reject);
-          }, 0);
-        });
-
-        this.onRejectedCallbacks.push((err) => {
+      const self = this;
+      function onhandleResolve() {
+        if (self.state === PromiseStatus.fulfilled) {
           setTimeout(() => {
             try {
-              let x = onRejected(err);
+              let x = newOnFulfilled(self.value!);
               resolvePromise(promise2, x, resolve, reject);
             } catch (e) {
               reject(e);
             }
           });
-        });
+        }
+      }
+      function onhandleRejected() {
+        // 状态为rejected，执行onRejected，传入失败的原因
+        if (self.state === PromiseStatus.rejected) {
+          setTimeout(() => {
+            try {
+              let x = newOnRejected(self.reason!);
+              resolvePromise(promise2, x, resolve, reject);
+            } catch (e) {
+              reject(e);
+            }
+          });
+        }
+      }
+      onhandleResolve();
+      onhandleRejected();
+
+      if (this.state === PromiseStatus.pending) {
+        this.onResolvedCallbacks.push(onhandleResolve);
+        this.onRejectedCallbacks.push(onhandleRejected);
       }
     });
 
     return promise2;
   }
+  private changeToFunction(
+    onFulfilled: onFulfilled<T> | undefined,
+    onRejected: onRejected | undefined
+  ) {
+    onFulfilled =
+      typeof onFulfilled === "function"
+        ? onFulfilled
+        : function (value) {
+            return value;
+          };
+    onRejected =
+      typeof onRejected === "function"
+        ? onRejected
+        : function (reason) {
+            throw reason;
+          };
+    return { onFulfilled, onRejected };
+  }
+  private createPromiseHandle(self: Promise) {}
+
   static reject(err: unknown) {
     return new Promise((resolve, reject) => {
       reject(err);

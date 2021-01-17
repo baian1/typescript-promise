@@ -60,14 +60,18 @@ var Promise = /** @class */ (function () {
         this.onRejectedCallbacks = [];
         this.state = PromiseStatus.pending;
         var resolve = function (value) {
-            _this.state = PromiseStatus.fulfilled;
-            _this.value = value;
-            _this.onResolvedCallbacks.forEach(function (cb) { return cb(value); });
+            if (_this.state === PromiseStatus.pending) {
+                _this.state = PromiseStatus.fulfilled;
+                _this.value = value;
+                _this.onResolvedCallbacks.forEach(function (cb) { return cb(value); });
+            }
         };
         var reject = function (reason) {
-            _this.state = PromiseStatus.rejected;
-            _this.reason = reason;
-            _this.onRejectedCallbacks.forEach(function (cb) { return cb(reason); });
+            if (_this.state === PromiseStatus.pending) {
+                _this.state = PromiseStatus.rejected;
+                _this.reason = reason;
+                _this.onRejectedCallbacks.forEach(function (cb) { return cb(reason); });
+            }
         };
         try {
             executor(resolve, reject);
@@ -78,45 +82,62 @@ var Promise = /** @class */ (function () {
     }
     Promise.prototype.then = function (onFulfilled, onRejected) {
         var _this = this;
-        if (onFulfilled === void 0) { onFulfilled = function (v) { return v; }; }
-        if (onRejected === void 0) { onRejected = function (err) {
-            //err要被后面的catch接住,所以用throw
-            //return就变成then了
-            throw err;
-        }; }
+        var _a = this.changeToFunction(onFulfilled, onRejected), newOnFulfilled = _a.onFulfilled, newOnRejected = _a.onRejected;
         // 状态为fulfilled，执行onFulfilled，传入成功的值
         var promise2 = new Promise(function (resolve, reject) {
-            if (_this.state === PromiseStatus.fulfilled) {
-                var x = onFulfilled(_this.value);
-                resolvePromise(promise2, x, resolve, reject);
-            }
-            // 状态为rejected，执行onRejected，传入失败的原因
-            if (_this.state === PromiseStatus.rejected) {
-                var x = onRejected(_this.reason);
-                resolvePromise(promise2, x, resolve, reject);
-            }
-            if (_this.state === PromiseStatus.pending) {
-                _this.onResolvedCallbacks.push(function (v) {
-                    setTimeout(function () {
-                        var x = onFulfilled(v);
-                        resolvePromise(promise2, x, resolve, reject);
-                    }, 0);
-                });
-                _this.onRejectedCallbacks.push(function (err) {
+            var self = _this;
+            function onhandleResolve() {
+                if (self.state === PromiseStatus.fulfilled) {
                     setTimeout(function () {
                         try {
-                            var x = onRejected(err);
+                            var x = newOnFulfilled(self.value);
                             resolvePromise(promise2, x, resolve, reject);
                         }
                         catch (e) {
                             reject(e);
                         }
                     });
-                });
+                }
+            }
+            function onhandleRejected() {
+                // 状态为rejected，执行onRejected，传入失败的原因
+                if (self.state === PromiseStatus.rejected) {
+                    setTimeout(function () {
+                        try {
+                            var x = newOnRejected(self.reason);
+                            resolvePromise(promise2, x, resolve, reject);
+                        }
+                        catch (e) {
+                            reject(e);
+                        }
+                    });
+                }
+            }
+            onhandleResolve();
+            onhandleRejected();
+            if (_this.state === PromiseStatus.pending) {
+                _this.onResolvedCallbacks.push(onhandleResolve);
+                _this.onRejectedCallbacks.push(onhandleRejected);
             }
         });
         return promise2;
     };
+    Promise.prototype.changeToFunction = function (onFulfilled, onRejected) {
+        onFulfilled =
+            typeof onFulfilled === "function"
+                ? onFulfilled
+                : function (value) {
+                    return value;
+                };
+        onRejected =
+            typeof onRejected === "function"
+                ? onRejected
+                : function (reason) {
+                    throw reason;
+                };
+        return { onFulfilled: onFulfilled, onRejected: onRejected };
+    };
+    Promise.prototype.createPromiseHandle = function (self) { };
     Promise.reject = function (err) {
         return new Promise(function (resolve, reject) {
             reject(err);
@@ -149,3 +170,4 @@ var adapter = {
     resolved: function (value) { return Promise.resolve(value); }
 };
 module.exports = adapter;
+//# sourceMappingURL=promise.js.map
