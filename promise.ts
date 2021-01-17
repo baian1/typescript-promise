@@ -14,6 +14,16 @@ interface onRejected {
   (err: unknown): any;
 }
 
+//判断值是对象或函数,可能含有then
+function isObjectOrFN(v: unknown): v is { then?: (...p: any) => unknown } {
+  //null的类型也是唐渝鹏
+  if (v === null) {
+    return false;
+  }
+
+  return typeof v === "object" || typeof v === "function";
+}
+
 function resolvePromise(
   promise2: Promise,
   x: any,
@@ -30,12 +40,13 @@ function resolvePromise(
   let called: boolean = false;
   // x不是null且x是对象或者函数
   // 类似于Promise有then函数的
-  if (x != null && (typeof x === "object" || typeof x === "function")) {
+  if (isObjectOrFN(x)) {
     let then;
     try {
       then = x.then;
     } catch (e) {
-      // 获取then失败
+      //获取then失败
+      //x={then:()=>{throw e}}
       if (called) return;
       return reject(e);
     }

@@ -4,6 +4,14 @@ var PromiseStatus;
     PromiseStatus[PromiseStatus["fulfilled"] = 1] = "fulfilled";
     PromiseStatus[PromiseStatus["rejected"] = 2] = "rejected";
 })(PromiseStatus || (PromiseStatus = {}));
+//判断值是对象或函数,可能含有then
+function isObjectOrFN(v) {
+    //null的类型也是唐渝鹏
+    if (v === null) {
+        return false;
+    }
+    return typeof v === "object" || typeof v === "function";
+}
 function resolvePromise(promise2, x, resolve, reject) {
     // 循环引用报错
     if (x === promise2) {
@@ -15,13 +23,14 @@ function resolvePromise(promise2, x, resolve, reject) {
     var called = false;
     // x不是null且x是对象或者函数
     // 类似于Promise有then函数的
-    if (x != null && (typeof x === "object" || typeof x === "function")) {
+    if (isObjectOrFN(x)) {
         var then = void 0;
         try {
             then = x.then;
         }
         catch (e) {
-            // 获取then失败
+            //获取then失败
+            //x={then:()=>{throw e}}
             if (called)
                 return;
             return reject(e);
