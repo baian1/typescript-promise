@@ -97,43 +97,54 @@ class Promise<T = unknown> {
   }
 
   then(onFulfilled?: onFulfilled<T>, onRejected?: onRejected) {
-    const {
-      onFulfilled: newOnFulfilled,
-      onRejected: newOnRejected,
-    } = this.changeToFunction(onFulfilled, onRejected);
-
-    // 状态为fulfilled，执行onFulfilled，传入成功的值
+    //then的处理函数,非function表示穿透
+    //将其保存下来
+    const self = this;
+    const promiseHandle = {
+      [PromiseStatus.fulfilled]: this.changeToFunction(
+        PromiseStatus.fulfilled,
+        onFulfilled
+      ),
+      [PromiseStatus.rejected]: this.changeToFunction(
+        PromiseStatus.rejected,
+        onRejected
+      ),
+      [PromiseStatus.pending]: () => {
+        throw new Error("不存在padding状态的handle");
+      },
+    };
+    //then必定返回一个promise 状态为fulfilled，执行onFulfilled，传入成功的值
+    //创建Promise抽取resolve和reject,用于改变状态
     let promise2 = new Promise((resolve, reject) => {
-      const self = this;
-      function onhandleResolve() {
-        if (self.state === PromiseStatus.fulfilled) {
-          setTimeout(() => {
-            try {
-              let x = newOnFulfilled(self.value!);
-              resolvePromise(promise2, x, resolve, reject);
-            } catch (e) {
-              reject(e);
-            }
-          });
-        }
+      //创建状态改变后的then触发函数
+      //错误走reject逻辑处理
+      //正确走resolve逻辑处理
+      function createHandle(type: PromiseStatus) {
+        return function () {
+          if (self.state === type) {
+            setTimeout(() => {
+              try {
+                //如果处理函数状态为错误,返回错误Promise
+                const data: any =
+                  type === PromiseStatus.fulfilled ? self.value : self.reason;
+                let x = promiseHandle[type].call(undefined, data);
+                resolvePromise(promise2, x, resolve, reject);
+              } catch (e) {
+                reject(e);
+              }
+            });
+          }
+        };
       }
-      function onhandleRejected() {
-        // 状态为rejected，执行onRejected，传入失败的原因
-        if (self.state === PromiseStatus.rejected) {
-          setTimeout(() => {
-            try {
-              let x = newOnRejected(self.reason!);
-              resolvePromise(promise2, x, resolve, reject);
-            } catch (e) {
-              reject(e);
-            }
-          });
-        }
-      }
-      onhandleResolve();
-      onhandleRejected();
-
-      if (this.state === PromiseStatus.pending) {
+      const onhandleResolve = createHandle(PromiseStatus.fulfilled);
+      const onhandleRejected = createHandle(PromiseStatus.rejected);
+      //非pending
+      //直接执行处理数据走then
+      if (this.state !== PromiseStatus.pending) {
+        onhandleResolve();
+        onhandleRejected();
+      } else {
+        //pending 将处理函数推入栈,延迟执行
         this.onResolvedCallbacks.push(onhandleResolve);
         this.onRejectedCallbacks.push(onhandleRejected);
       }
@@ -141,25 +152,27 @@ class Promise<T = unknown> {
 
     return promise2;
   }
-  private changeToFunction(
-    onFulfilled: onFulfilled<T> | undefined,
-    onRejected: onRejected | undefined
-  ) {
-    onFulfilled =
-      typeof onFulfilled === "function"
-        ? onFulfilled
-        : function (value) {
-            return value;
-          };
-    onRejected =
-      typeof onRejected === "function"
-        ? onRejected
-        : function (reason) {
-            throw reason;
-          };
-    return { onFulfilled, onRejected };
+
+  private changeToFunction<T extends unknown>(type: PromiseStatus, cb: T) {
+    if (typeof cb === "function") {
+      return cb;
+    }
+    switch (type) {
+      case PromiseStatus.fulfilled: {
+        return function (value: any) {
+          return value;
+        };
+      }
+      case PromiseStatus.rejected: {
+        return function (reason: unknown) {
+          throw reason;
+        };
+      }
+      case PromiseStatus.pending: {
+        throw new Error("不存在pending状态的处理函数");
+      }
+    }
   }
-  private createPromiseHandle(self: Promise) {}
 
   static reject(err: unknown) {
     return new Promise((resolve, reject) => {

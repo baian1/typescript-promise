@@ -81,63 +81,77 @@ var Promise = /** @class */ (function () {
         }
     }
     Promise.prototype.then = function (onFulfilled, onRejected) {
+        var _a;
         var _this = this;
-        var _a = this.changeToFunction(onFulfilled, onRejected), newOnFulfilled = _a.onFulfilled, newOnRejected = _a.onRejected;
-        // 状态为fulfilled，执行onFulfilled，传入成功的值
+        //then的处理函数,非function表示穿透
+        //将其保存下来
+        var self = this;
+        var promiseHandle = (_a = {},
+            _a[PromiseStatus.fulfilled] = this.changeToFunction(PromiseStatus.fulfilled, onFulfilled),
+            _a[PromiseStatus.rejected] = this.changeToFunction(PromiseStatus.rejected, onRejected),
+            _a[PromiseStatus.pending] = function () {
+                throw new Error("不存在padding状态的handle");
+            },
+            _a);
+        //then必定返回一个promise 状态为fulfilled，执行onFulfilled，传入成功的值
+        //创建Promise抽取resolve和reject,用于改变状态
         var promise2 = new Promise(function (resolve, reject) {
-            var self = _this;
-            function onhandleResolve() {
-                if (self.state === PromiseStatus.fulfilled) {
-                    setTimeout(function () {
-                        try {
-                            var x = newOnFulfilled(self.value);
-                            resolvePromise(promise2, x, resolve, reject);
-                        }
-                        catch (e) {
-                            reject(e);
-                        }
-                    });
-                }
+            //创建状态改变后的then触发函数
+            //错误走reject逻辑处理
+            //正确走resolve逻辑处理
+            function createHandle(type) {
+                return function () {
+                    if (self.state === type) {
+                        setTimeout(function () {
+                            try {
+                                //如果处理函数状态为错误,返回错误Promise
+                                var data = type === PromiseStatus.fulfilled ? self.value : self.reason;
+                                var x = promiseHandle[type].call(undefined, data);
+                                resolvePromise(promise2, x, resolve, reject);
+                            }
+                            catch (e) {
+                                reject(e);
+                            }
+                        });
+                    }
+                };
             }
-            function onhandleRejected() {
-                // 状态为rejected，执行onRejected，传入失败的原因
-                if (self.state === PromiseStatus.rejected) {
-                    setTimeout(function () {
-                        try {
-                            var x = newOnRejected(self.reason);
-                            resolvePromise(promise2, x, resolve, reject);
-                        }
-                        catch (e) {
-                            reject(e);
-                        }
-                    });
-                }
+            var onhandleResolve = createHandle(PromiseStatus.fulfilled);
+            var onhandleRejected = createHandle(PromiseStatus.rejected);
+            //非pending
+            //直接执行处理数据走then
+            if (_this.state !== PromiseStatus.pending) {
+                onhandleResolve();
+                onhandleRejected();
             }
-            onhandleResolve();
-            onhandleRejected();
-            if (_this.state === PromiseStatus.pending) {
+            else {
+                //pending 将处理函数推入栈,延迟执行
                 _this.onResolvedCallbacks.push(onhandleResolve);
                 _this.onRejectedCallbacks.push(onhandleRejected);
             }
         });
         return promise2;
     };
-    Promise.prototype.changeToFunction = function (onFulfilled, onRejected) {
-        onFulfilled =
-            typeof onFulfilled === "function"
-                ? onFulfilled
-                : function (value) {
+    Promise.prototype.changeToFunction = function (type, cb) {
+        if (typeof cb === "function") {
+            return cb;
+        }
+        switch (type) {
+            case PromiseStatus.fulfilled: {
+                return function (value) {
                     return value;
                 };
-        onRejected =
-            typeof onRejected === "function"
-                ? onRejected
-                : function (reason) {
+            }
+            case PromiseStatus.rejected: {
+                return function (reason) {
                     throw reason;
                 };
-        return { onFulfilled: onFulfilled, onRejected: onRejected };
+            }
+            case PromiseStatus.pending: {
+                throw new Error("不存在pending状态的处理函数");
+            }
+        }
     };
-    Promise.prototype.createPromiseHandle = function (self) { };
     Promise.reject = function (err) {
         return new Promise(function (resolve, reject) {
             reject(err);
