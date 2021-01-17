@@ -2,10 +2,10 @@ import { changeOtherTypeToFunction } from "./changeOtherTypeToFunction";
 import { isObjectOrFN } from "./isObjectOrFN";
 import { onFulfilled, onRejected, PromiseStatus, Then } from "./type";
 
-function resolvePromise(
-  promise2: Promise,
+function resolvePromise<T>(
+  promise2: Promise<T>,
   x: any,
-  resolve: onFulfilled,
+  resolve: onFulfilled<T>,
   reject: onRejected
 ) {
   // 循环引用报错
@@ -93,7 +93,10 @@ class Promise<T = unknown> {
     }
   }
 
-  then(onFulfilled?: onFulfilled<T>, onRejected?: onRejected) {
+  then<TResult1 = T>(
+    onFulfilled?: ((value: T) => TResult1) | undefined,
+    onRejected?: onRejected
+  ) {
     //then的处理函数,非function表示穿透
     //将其保存下来
     const self = this;
@@ -110,9 +113,10 @@ class Promise<T = unknown> {
         throw new Error("不存在padding状态的handle");
       },
     };
+
     //then必定返回一个promise 状态为fulfilled，执行onFulfilled，传入成功的值
     //创建Promise抽取resolve和reject,用于改变状态
-    let promise2 = new Promise((resolve, reject) => {
+    let promise2 = new Promise<TResult1>((resolve, reject) => {
       //创建状态改变后的then触发函数
       //错误走reject逻辑处理
       //正确走resolve逻辑处理

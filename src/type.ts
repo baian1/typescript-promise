@@ -3,12 +3,12 @@ export enum PromiseStatus {
   fulfilled,
   rejected,
 }
-export interface Then<T> {
-  (resolve: onFulfilled<T>, reject: onRejected): void;
+export interface Then<T, R = onFulfilled<T>> {
+  (resolve: R, reject: onRejected): void;
 }
 export interface onFulfilled<T = unknown> {
-  (v: T): any;
+  (v: T): unknown;
 }
 export interface onRejected {
-  (err: unknown): any;
+  (err: unknown): void;
 }
